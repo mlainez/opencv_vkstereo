@@ -1,0 +1,68 @@
+#version 450
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_shuffle : require
+#extension GL_KHR_shader_subgroup_shuffle_relative : require
+#extension GL_GOOGLE_include_directive : require
+// Copyright 2016 Fixstars Corporation
+// SPDX-License-Identifier: Apache-2.0
+// Scans over the stored matching costs: the reverse horizontal path, or the
+// vertical path fused with selection.
+layout(local_size_x = 128) in;
+// Image size and penalties are specialization constants; the disparity
+// range and lane layout stay compile-time macros.
+layout(constant_id = 0) const int WIDTH = 640;
+layout(constant_id = 1) const int HEIGHT = 480;
+layout(constant_id = 2) const int P1 = 8;
+layout(constant_id = 3) const int P2 = 64;
+layout(constant_id = 4) const float UNIQUENESS = 1.0526315789473684;
+#ifndef BLOCK
+#define BLOCK 8
+#endif
+#include "cost_dp.glsl"
+layout(set = 0, binding = 0) readonly buffer Costs { PATH_WORD_TYPE cost_words[]; };
+#if FUSE_VERTICAL
+layout(set = 0, binding = 1) readonly buffer Forward { PATH_WORD_TYPE paths_forward[]; };
+layout(set = 0, binding = 2) readonly buffer Reverse { PATH_WORD_TYPE paths_reverse[]; };
+layout(set = 0, binding = 3) writeonly buffer LeftDisparity { float left_disparity[]; };
+layout(set = 0, binding = 4) writeonly buffer Winners { uint winners[]; };
+#include "cost_select.glsl"
+#else
+layout(set = 0, binding = 1) writeonly buffer Paths { PATH_WORD_TYPE paths[]; };
+#endif
+void load_costs(out uint costs[BLOCK], int word) {
+  for (int k = 0; k < BLOCK; k += PATH_PACK) unpack_lane(cost_words[word + k / PATH_PACK], costs, k);
+}
+void main() {
+  uint lane = gl_SubgroupInvocationID % LANES;
+  uint base = gl_SubgroupInvocationID - lane;
+  LaneGeometry g = lane_geometry(lane, base);
+  int line = int(gl_WorkGroupID.x) * LINES + int(gl_LocalInvocationID.x) / LANES;
+  uint previous[BLOCK];
+  for (int k = 0; k < BLOCK; ++k) previous[k] = 0;
+  uint last_min = 0;
+#if FUSE_VERTICAL
+  int x = line;
+  if (x >= WIDTH) return;
+  SelectGeometry s = select_geometry(x, lane, base);
+  int pixel = x;
+  int word = volume_word(x, 0, lane);
+  for (int y = 0; y < HEIGHT; ++y) {
+    uint costs[BLOCK];
+    load_costs(costs, word);
+    update_path(costs, previous, last_min, g);
+    select_pixel(previous, pixel, word, s);
+    pixel += WIDTH;
+    word += (y + 1) % VOLUME_TILE == 0 ? TILE_ROW_WORDS - (VOLUME_TILE - 1) * WORDS_PER_PIXEL : WORDS_PER_PIXEL;
+  }
+#else
+  if (line >= HEIGHT) return;
+  int word = volume_word(WIDTH - 1, line, lane);
+  for (int x = WIDTH - 1; x >= 0; --x) {
+    uint costs[BLOCK];
+    load_costs(costs, word);
+    update_path(costs, previous, last_min, g);
+    for (int k = 0; k < BLOCK; k += PATH_PACK) paths[word + k / PATH_PACK] = pack_lane(previous, k);
+    word -= TILE_WORDS;
+  }
+#endif
+}

@@ -1,0 +1,8 @@
+Apache License, Version 2.0: see https://www.apache.org/licenses/LICENSE-2.0
+
+Copyright 2016 Fixstars Corporation (shaders adapted from libSGM)
+Copyright 2026 Marc Lainez
+
+The shaders in modules/vkstereo/shaders adapt Fixstars libSGM's CUDA kernels
+to Vulkan GLSL; consistency_projected.comp adapts OpenCV's SGBM3Way winner
+projection (BSD-3-Clause, see modules/vkstereo/shaders/OPENCV-LICENSE).

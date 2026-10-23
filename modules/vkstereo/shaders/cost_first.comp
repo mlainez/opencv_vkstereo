@@ -1,0 +1,76 @@
+#version 450
+#extension GL_KHR_shader_subgroup_basic : require
+#extension GL_KHR_shader_subgroup_shuffle : require
+#extension GL_KHR_shader_subgroup_shuffle_relative : require
+#extension GL_GOOGLE_include_directive : require
+// Copyright 2016 Fixstars Corporation
+// SPDX-License-Identifier: Apache-2.0
+// Forward horizontal scan: libSGM's register Census window produces the raw
+// matching costs, which are stored for the later scans alongside the path.
+layout(local_size_x = 128) in;
+// Image size and penalties are specialization constants; the disparity
+// range and lane layout stay compile-time macros.
+layout(constant_id = 0) const int WIDTH = 640;
+layout(constant_id = 1) const int HEIGHT = 480;
+layout(constant_id = 2) const int P1 = 8;
+layout(constant_id = 3) const int P2 = 64;
+layout(constant_id = 4) const float UNIQUENESS = 1.0526315789473684;
+#if CLASSIC_CENSUS
+#define FEATURE_PAIR uvec4
+#else
+#define FEATURE_PAIR uvec2
+#endif
+#ifndef BLOCK
+#define BLOCK 8
+#endif
+#include "cost_dp.glsl"
+// Left and right features of a pixel share one element, in the same row
+// tiles as the byte volumes, so each step needs one contiguous load.
+layout(set = 0, binding = 0) readonly buffer Features { FEATURE_PAIR features[]; };
+layout(set = 0, binding = 1) writeonly buffer Paths { PATH_WORD_TYPE paths[]; };
+layout(set = 0, binding = 2) writeonly buffer Costs { PATH_WORD_TYPE matching_costs[]; };
+uvec2 left_of(FEATURE_PAIR f) {
+#if CLASSIC_CENSUS
+  return f.xy;
+#else
+  return uvec2(f.x, 0);
+#endif
+}
+uvec2 right_of(FEATURE_PAIR f) {
+#if CLASSIC_CENSUS
+  return f.zw;
+#else
+  return uvec2(f.y, 0);
+#endif
+}
+void main() {
+  int line = int(gl_WorkGroupID.x) * LINES + int(gl_LocalInvocationID.x) / LANES;
+  if (line >= HEIGHT) return;
+  uint lane = gl_SubgroupInvocationID % LANES;
+  uint base = gl_SubgroupInvocationID - lane;
+  LaneGeometry g = lane_geometry(lane, base);
+  bool first_lane = lane == 0;
+  int pixel = ((line / VOLUME_TILE) * WIDTH) * VOLUME_TILE + line % VOLUME_TILE;
+  int word = volume_word(0, line, lane);
+  // Pixels left of the image carry zero features, as libSGM pads them.
+  uvec2 window[BLOCK];
+  for (int k = 0; k < BLOCK; ++k) window[k] = uvec2(0);
+  uint previous[BLOCK];
+  for (int k = 0; k < BLOCK; ++k) previous[k] = 0;
+  uint last_min = 0;
+  for (int x = 0; x < WIDTH; ++x) {
+    FEATURE_PAIR pair = features[pixel];
+    uvec2 feature = left_of(pair), incoming = right_of(pair);
+    uvec2 tail = subgroupShuffle(window[BLOCK - 1], g.lower_lane);
+    for (int k = BLOCK - 1; k > 0; --k) window[k] = window[k - 1];
+    window[0] = first_lane ? incoming : tail;
+    uint costs[BLOCK];
+    for (int k = 0; k < BLOCK; ++k)
+      costs[k] = bitCount(feature.x ^ window[k].x) + bitCount(feature.y ^ window[k].y);
+    for (int k = 0; k < BLOCK; k += PATH_PACK) matching_costs[word + k / PATH_PACK] = pack_lane(costs, k);
+    update_path(costs, previous, last_min, g);
+    for (int k = 0; k < BLOCK; k += PATH_PACK) paths[word + k / PATH_PACK] = pack_lane(previous, k);
+    pixel += VOLUME_TILE;
+    word += TILE_WORDS;
+  }
+}
