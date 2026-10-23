@@ -7,13 +7,8 @@
 // P2 - P1 so that adding P1 reproduces the P2 clamp exactly.
 #define LANES (DISPARITIES / BLOCK)
 #define LINES (128 / LANES)
-#if BLOCK >= 8
 #define PATH_WORD_TYPE uvec2
 #define PATH_PACK 8
-#else
-#define PATH_WORD_TYPE uint
-#define PATH_PACK 4
-#endif
 #define WORDS_PER_PIXEL (DISPARITIES / PATH_PACK)
 // Byte volumes are stored in tiles of LINES consecutive rows per column, so a
 // horizontal scan's workgroup touches one contiguous span per pixel step and
@@ -62,23 +57,15 @@ void update_path(uint costs[BLOCK], inout uint previous[BLOCK], inout uint last_
 }
 PATH_WORD_TYPE pack_lane(uint values[BLOCK], int first) {
   uint lo = values[first] | (values[first + 1] << 8) | (values[first + 2] << 16) | (values[first + 3] << 24);
-#if PATH_PACK == 8
   uint hi = values[first + 4] | (values[first + 5] << 8) | (values[first + 6] << 16) | (values[first + 7] << 24);
   return uvec2(lo, hi);
-#else
-  return lo;
-#endif
 }
 void unpack_lane(PATH_WORD_TYPE word, out uint values[BLOCK], int first) {
-#if PATH_PACK == 8
   values[first + 4] = word.y & 255u;
   values[first + 5] = (word.y >> 8) & 255u;
   values[first + 6] = (word.y >> 16) & 255u;
   values[first + 7] = word.y >> 24;
   uint w = word.x;
-#else
-  uint w = word;
-#endif
   values[first] = w & 255u;
   values[first + 1] = (w >> 8) & 255u;
   values[first + 2] = (w >> 16) & 255u;

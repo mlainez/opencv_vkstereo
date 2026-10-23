@@ -105,8 +105,7 @@ is absent.
 `modules/vkstereo` follows the opencv_contrib module layout (`include/opencv2`,
 `src`, `test`, `samples`) so it can be built standalone, as here, or dropped
 into an opencv_contrib checkout later. The shaders in `modules/vkstereo/shaders`
-are the ones validated in the Nerves/NxIREE pipeline (`nx_iree/bench/stereo/census`,
-`VIDEO_FUSION=cost`), with size and penalties turned into specialization
-constants; `cost_dp.glsl` and `cost_select.glsl` adapt libSGM (Apache-2.0,
+are the same sources as the [`nx_stereo`](../nx_stereo) Elixir library's, which
+runs them through NxIREE; size and penalties are specialization constants; `cost_dp.glsl` and `cost_select.glsl` adapt libSGM (Apache-2.0,
 Fixstars), `consistency_projected.comp` adapts OpenCV's SGBM3Way projection
 (BSD-3-Clause). See `LICENSE`.

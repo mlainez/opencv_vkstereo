@@ -16,27 +16,11 @@ layout(constant_id = 4) const float UNIQUENESS = 1.0526315789473684;
 layout(set = 0, binding = 0) readonly buffer Left { float left_disparity[]; };
 layout(set = 0, binding = 1) readonly buffer Winners { uint winners[]; };
 layout(set = 0, binding = 2) writeonly buffer Output { float consistent[]; };
-#if ROW_SCATTER
 #define MAX_WIDTH 4096
 shared uint right_winners[MAX_WIDTH];
 uint projected(int rx, int y) {
   return rx >= 0 && rx < WIDTH ? right_winners[rx] : 0xffffffffu;
 }
-#else
-uint projected(int rx, int y) {
-  uint best = 0xffffffffu;
-  for (int d = 0; d < DISPARITIES; ++d) {
-    int lx = rx + d;
-    if (rx >= 0 && rx < WIDTH && lx < WIDTH) {
-      uint winner = winners[y * WIDTH + lx];
-      // OpenCV scans left winners in descending x and keeps the first
-      // equal-cost match, so equal projection costs favor larger disparity.
-      if (int(winner & 65535u) == d) best = min(best,(winner & 0xffff0000u) | uint(65535-d));
-    }
-  }
-  return best;
-}
-#endif
 bool disagrees(uint match, int rx, int d) {
   return rx >= 0 && rx < WIDTH && match != 0xffffffffu && abs(65535 - int(match & 65535u) - d) > 1;
 }
@@ -50,7 +34,6 @@ void check_pixel(int pixel) {
   consistent[pixel] = value >= 0.0 && !rejected ? value : -1.0;
 }
 void main() {
-#if ROW_SCATTER
   int y = int(gl_WorkGroupID.x);
   for (int x = int(gl_LocalInvocationID.x); x < WIDTH; x += 128) right_winners[x] = 0xffffffffu;
   barrier();
@@ -66,8 +49,4 @@ void main() {
   }
   barrier();
   for (int x = int(gl_LocalInvocationID.x); x < WIDTH; x += 128) check_pixel(y * WIDTH + x);
-#else
-  int pixel = int(gl_GlobalInvocationID.x);
-  if (pixel < WIDTH * HEIGHT) check_pixel(pixel);
-#endif
 }

@@ -15,14 +15,7 @@ layout(constant_id = 1) const int HEIGHT = 480;
 layout(constant_id = 2) const int P1 = 8;
 layout(constant_id = 3) const int P2 = 64;
 layout(constant_id = 4) const float UNIQUENESS = 1.0526315789473684;
-#if CLASSIC_CENSUS
 #define FEATURE_PAIR uvec4
-#else
-#define FEATURE_PAIR uvec2
-#endif
-#ifndef BLOCK
-#define BLOCK 8
-#endif
 #include "cost_dp.glsl"
 // Left and right features of a pixel share one element, in the same row
 // tiles as the byte volumes, so each step needs one contiguous load.
@@ -30,18 +23,10 @@ layout(set = 0, binding = 0) readonly buffer Features { FEATURE_PAIR features[];
 layout(set = 0, binding = 1) writeonly buffer Paths { PATH_WORD_TYPE paths[]; };
 layout(set = 0, binding = 2) writeonly buffer Costs { PATH_WORD_TYPE matching_costs[]; };
 uvec2 left_of(FEATURE_PAIR f) {
-#if CLASSIC_CENSUS
   return f.xy;
-#else
-  return uvec2(f.x, 0);
-#endif
 }
 uvec2 right_of(FEATURE_PAIR f) {
-#if CLASSIC_CENSUS
   return f.zw;
-#else
-  return uvec2(f.y, 0);
-#endif
 }
 void main() {
   int line = int(gl_WorkGroupID.x) * LINES + int(gl_LocalInvocationID.x) / LANES;

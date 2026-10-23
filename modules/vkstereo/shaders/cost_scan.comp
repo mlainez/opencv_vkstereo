@@ -15,9 +15,6 @@ layout(constant_id = 1) const int HEIGHT = 480;
 layout(constant_id = 2) const int P1 = 8;
 layout(constant_id = 3) const int P2 = 64;
 layout(constant_id = 4) const float UNIQUENESS = 1.0526315789473684;
-#ifndef BLOCK
-#define BLOCK 8
-#endif
 #include "cost_dp.glsl"
 layout(set = 0, binding = 0) readonly buffer Costs { PATH_WORD_TYPE cost_words[]; };
 #if FUSE_VERTICAL

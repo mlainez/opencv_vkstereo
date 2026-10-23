@@ -25,14 +25,8 @@ PATH_WORD_TYPE add_words(PATH_WORD_TYPE a, PATH_WORD_TYPE b) { return a + b; }
 uint pick(uint values[BLOCK], uint index) {
   uint t[BLOCK];
   for (int i = 0; i < BLOCK; ++i) t[i] = values[i];
-#if BLOCK >= 16
-  bool high8 = (index & 8u) != 0u;
-  for (int i = 0; i < 8; ++i) t[i] = high8 ? t[i + 8] : t[i];
-#endif
-#if BLOCK >= 8
   bool high4 = (index & 4u) != 0u;
   for (int i = 0; i < 4; ++i) t[i] = high4 ? t[i + 4] : t[i];
-#endif
   bool high2 = (index & 2u) != 0u;
   for (int i = 0; i < 2; ++i) t[i] = high2 ? t[i + 2] : t[i];
   return (index & 1u) != 0u ? t[1] : t[0];

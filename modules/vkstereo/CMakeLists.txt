@@ -1,5 +1,6 @@
 # Shader variants are compiled at build time into C headers; the image size
 # and penalties are specialization constants, the disparity range is not.
+# The shaders are shared with the nx_stereo Elixir library.
 set(VKSTEREO_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders)
 set(VKSTEREO_GENERATED ${CMAKE_CURRENT_BINARY_DIR}/generated)
 file(MAKE_DIRECTORY ${VKSTEREO_GENERATED})
@@ -7,10 +8,8 @@ file(MAKE_DIRECTORY ${VKSTEREO_GENERATED})
 set(VKSTEREO_SHADER_HEADERS)
 foreach(disparities 64 128)
   math(EXPR tile "1024 / ${disparities}")
-  math(EXPR lanes "${disparities} / 8")
   set(common -V --target-env vulkan1.1 -S comp
-      -DDISPARITIES=${disparities} -DBLOCK=8 -DCLASSIC_CENSUS=1 -DFEATURE_TILE=${tile}
-      -DSELECT_LANES=${lanes} -DROW_SCATTER=1 -DMEDIAN_ONLY=1 -DTILE_ROWS=1)
+      -DDISPARITIES=${disparities} -DBLOCK=8 -DFEATURE_TILE=${tile})
   foreach(variant
       "census_pair;census_pair;"
       "cost_first;cost_first;-DFUSE_VERTICAL=0"
