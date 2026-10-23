@@ -5,6 +5,8 @@
 #include <vulkan/vulkan_raii.hpp>
 
 #include <array>
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
@@ -102,18 +104,34 @@ public:
         if (!plan_ || plan_->size != l.size() || plan_->disparities != disparities_ || plan_->P1 != P1_ ||
             plan_->P2 != P2_ || plan_->uniqueness != uniqueness_)
             plan_ = buildPlan(l.size());
+        using clock = std::chrono::steady_clock;
+        auto t0 = clock::now();
         upload(l, plan_->buffers[LEFT]);
         upload(r, plan_->buffers[RIGHT]);
+        auto t1 = clock::now();
         vk::SubmitInfo submit({}, {}, *plan_->commands);
         queue_.submit(submit, *plan_->fence);
         if (device_.waitForFences(*plan_->fence, true, UINT64_MAX) != vk::Result::eSuccess)
             CV_Error(Error::StsInternal, "Vulkan fence wait failed");
         device_.resetFences(*plan_->fence);
+        auto t2 = clock::now();
         disparity.create(l.size(), CV_32F);
         Mat out = disparity.getMat();
         DeviceBuffer& result = plan_->buffers[OUTPUT];
         if (!result.coherent) device_.invalidateMappedMemoryRanges(vk::MappedMemoryRange(*result.memory, 0, VK_WHOLE_SIZE));
         Mat(out.size(), CV_32F, result.mapped).copyTo(out);
+        auto t3 = clock::now();
+        if (timing_) {
+            // VKSTEREO_TIMING=1 prints the mean phase times every 50 frames.
+            auto ms = [](auto a, auto b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
+            timingSum_[0] += ms(t0, t1);
+            timingSum_[1] += ms(t1, t2);
+            timingSum_[2] += ms(t2, t3);
+            if (++timingFrames_ % 50 == 0)
+                std::fprintf(stderr, "vkstereo timing over %d frames: upload %.3f ms, device %.3f ms, readback %.3f ms\n",
+                             timingFrames_, timingSum_[0] / timingFrames_, timingSum_[1] / timingFrames_,
+                             timingSum_[2] / timingFrames_);
+        }
     }
 
     int getMinDisparity() const CV_OVERRIDE { return 0; }
@@ -330,6 +348,9 @@ private:
     int disparities_, P1_, P2_;
     float uniqueness_;
     String deviceName_;
+    bool timing_ = std::getenv("VKSTEREO_TIMING") != nullptr;
+    double timingSum_[3] = {0, 0, 0};
+    int timingFrames_ = 0;
     vk::raii::Context context_;
     vk::raii::Instance instance_ = nullptr;
     vk::raii::PhysicalDevice physical_ = nullptr;
