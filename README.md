@@ -60,14 +60,14 @@ and this matcher on the same pair:
 ./build/modules/vkstereo/vkstereo_bench left.bin right.bin --width 640 --height 480
 ```
 
-Host results, 2026-10-23 (Ryzen with 16 OpenCV threads, AMD Radeon RX 7800 XT
-on RADV), 64 disparities, synchronous single-frame calls:
+Results, 2026-10-23, 64 disparities, synchronous single-frame calls with
+8-bit input and float output on the CPU side of each call:
 
-| Image | cv::StereoSGBM 3WAY (CPU) | vkstereo (Vulkan) |
-|---|---:|---:|
-| 320x136 Sintel alley_1 frame 1 | 892 FPS | 1186 FPS |
-| 640x480 | 148 FPS | 184 FPS |
-| 1280x720 | 48 FPS | 69 FPS |
+| Image | Host: cv::StereoSGBM 3WAY, 16 threads | Host: vkstereo, RX 7800 XT (RADV) | Jetson Nano: cv::StereoSGBM 3WAY, 4 threads | Jetson Nano: vkstereo, GM20B (NVK) |
+|---|---:|---:|---:|---:|
+| 320x136 Sintel | 892 FPS | 1094 FPS | | |
+| 640x480 | 148 FPS | 1094 FPS | 15.0 FPS | 42.8 FPS |
+| 1280x720 | 48 FPS | (not re-measured) | 3.4 FPS | 14.8 FPS |
 
 On the Sintel frame both matchers reject or misplace by more than one pixel
 about 14.5% of the ground-truth pixels in the region where every candidate is
@@ -75,12 +75,13 @@ in frame (14.33% Vulkan, 14.57% CPU). The two matchers use different costs
 (Census against OpenCV's Birchfield-Tomasi block cost) and penalties, so the
 rates are comparable only as a sanity check.
 
-The Vulkan figures are dominated by host work and latency: 8-bit to 32-bit
-conversion on the CPU, host-visible input buffers, a blocking fence wait and
-the readback copy. Device execution of the six dispatches is a small part of
-each frame on this GPU. Staging copies and overlapping two frames are the
-obvious next steps; the Jetson, where the device work dominates, has been
-measured separately.
+On the Jetson the same shaders reach 49.6 / 17.3 FPS when the graph runs with
+resident inputs and no readback; the difference is the per-call CPU work of a
+Mat interface on four Cortex-A57 cores: the 8-bit to 32-bit conversion, cache
+maintenance on the shared memory and the copy of the result. Host-visible
+buffers use cached memory with explicit flush and invalidate; the coherent
+type is uncached on both tested devices and made readback several times
+slower.
 
 ## Jetson build
 

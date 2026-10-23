@@ -68,6 +68,7 @@ struct DeviceBuffer {
     vk::raii::DeviceMemory memory = nullptr;
     vk::DeviceSize size = 0;
     void* mapped = nullptr;
+    bool coherent = true;
 };
 
 struct Plan {
@@ -110,9 +111,9 @@ public:
         device_.resetFences(*plan_->fence);
         disparity.create(l.size(), CV_32F);
         Mat out = disparity.getMat();
-        const float* src = static_cast<const float*>(plan_->buffers[OUTPUT].mapped);
-        for (int y = 0; y < out.rows; ++y)
-            std::memcpy(out.ptr<float>(y), src + static_cast<size_t>(y) * out.cols, out.cols * sizeof(float));
+        DeviceBuffer& result = plan_->buffers[OUTPUT];
+        if (!result.coherent) device_.invalidateMappedMemoryRanges(vk::MappedMemoryRange(*result.memory, 0, VK_WHOLE_SIZE));
+        Mat(out.size(), CV_32F, result.mapped).copyTo(out);
     }
 
     int getMinDisparity() const CV_OVERRIDE { return 0; }
@@ -201,35 +202,42 @@ private:
         memoryProperties_ = physical_.getMemoryProperties();
     }
 
-    uint32_t memoryType(uint32_t typeBits, vk::MemoryPropertyFlags required) const {
+    uint32_t memoryType(uint32_t typeBits, vk::MemoryPropertyFlags required, uint32_t fallback = UINT32_MAX) const {
         for (uint32_t i = 0; i < memoryProperties_.memoryTypeCount; ++i)
             if ((typeBits & (1u << i)) && (memoryProperties_.memoryTypes[i].propertyFlags & required) == required)
                 return i;
+        if (fallback != UINT32_MAX) return fallback;
         CV_Error(Error::StsInternal, "no suitable Vulkan memory type");
     }
 
+    // Host-visible buffers prefer cached memory with explicit flushes: on
+    // unified-memory devices the coherent type is uncached, and reading the
+    // result through it is slow.
     DeviceBuffer allocate(vk::DeviceSize size, bool hostVisible) {
         DeviceBuffer b;
         b.size = size;
         b.buffer = vk::raii::Buffer(device_, vk::BufferCreateInfo({}, size, vk::BufferUsageFlagBits::eStorageBuffer));
         auto requirements = b.buffer.getMemoryRequirements();
-        vk::MemoryPropertyFlags flags = hostVisible
-            ? vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
-            : vk::MemoryPropertyFlagBits::eDeviceLocal;
-        b.memory = vk::raii::DeviceMemory(
-            device_, vk::MemoryAllocateInfo(requirements.size, memoryType(requirements.memoryTypeBits, flags)));
+        uint32_t type;
+        if (hostVisible) {
+            auto cached = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCached;
+            auto coherent = vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent;
+            type = memoryType(requirements.memoryTypeBits, cached, memoryType(requirements.memoryTypeBits, coherent));
+            b.coherent = bool(memoryProperties_.memoryTypes[type].propertyFlags & vk::MemoryPropertyFlagBits::eHostCoherent);
+        } else {
+            type = memoryType(requirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal);
+        }
+        b.memory = vk::raii::DeviceMemory(device_, vk::MemoryAllocateInfo(requirements.size, type));
         b.buffer.bindMemory(*b.memory, 0);
         if (hostVisible) b.mapped = b.memory.mapMemory(0, size);
         return b;
     }
 
-    static void upload(const Mat& image, DeviceBuffer& buffer) {
+    void upload(const Mat& image, DeviceBuffer& buffer) const {
         // The Census shader reads 32-bit pixels.
-        int32_t* dst = static_cast<int32_t*>(buffer.mapped);
-        for (int y = 0; y < image.rows; ++y) {
-            const uchar* row = image.ptr<uchar>(y);
-            for (int x = 0; x < image.cols; ++x) *dst++ = row[x];
-        }
+        Mat dst(image.size(), CV_32S, buffer.mapped);
+        image.convertTo(dst, CV_32S);
+        if (!buffer.coherent) device_.flushMappedMemoryRanges(vk::MappedMemoryRange(*buffer.memory, 0, VK_WHOLE_SIZE));
     }
 
     std::unique_ptr<Plan> buildPlan(Size size) {
