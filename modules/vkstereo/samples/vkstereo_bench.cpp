@@ -7,7 +7,9 @@
 #include <vector>
 
 #include <opencv2/calib3d.hpp>
+#if VKSTEREO_HAVE_IMGCODECS
 #include <opencv2/imgcodecs.hpp>
+#endif
 #include <opencv2/imgproc.hpp>
 
 #include "opencv2/vkstereo.hpp"
@@ -29,9 +31,13 @@ cv::Mat readImage(const std::string& path, int width, int height) {
             for (int x = 0; x < width; ++x) image.at<uchar>(y, x) = static_cast<uchar>(pixels[y * width + x]);
         return image;
     }
+#if VKSTEREO_HAVE_IMGCODECS
     cv::Mat image = cv::imread(path, cv::IMREAD_GRAYSCALE);
     if (image.empty()) throw std::runtime_error("cannot read " + path);
     return image;
+#else
+    throw std::runtime_error("built without imgcodecs: pass --width and --height for raw input");
+#endif
 }
 
 template <typename F>

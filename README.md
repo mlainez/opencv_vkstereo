@@ -33,7 +33,8 @@ ninja -C build
 Shaders are compiled at build time into the library; image size and penalties
 are specialization constants, so no shader compiler is needed at run time. The
 device is the first discrete GPU; `VKSTEREO_DEVICE=<index>` selects another
-physical device, `VKSTEREO_VALIDATION=1` enables the Khronos validation layer.
+physical device, `VKSTEREO_VALIDATION=1` enables the Khronos validation layer. The library is
+built static by default; pass `-DBUILD_SHARED_LIBS=ON` for a shared one.
 
 ## Use
 
@@ -80,6 +81,14 @@ the readback copy. Device execution of the six dispatches is a small part of
 each frame on this GPU. Staging copies and overlapping two frames are the
 obvious next steps; the Jetson, where the device work dominates, has been
 measured separately.
+
+## Jetson build
+
+`scripts/build-jetson.sh` cross-compiles a static `vkstereo_bench` for the
+OKdo Nano C100's Nerves system with that system's Buildroot toolchain, after
+building a minimal static OpenCV (core, imgproc, calib3d) for it. The binary
+needs only the board's Vulkan loader and libc, so nothing in the firmware
+changes; raw 32-bit inputs are passed with `--width` and `--height`.
 
 ## Tests
 

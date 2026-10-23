@@ -9,8 +9,13 @@ endif()
 
 option(VKSTEREO_BUILD_TESTS "Build the GoogleTest suite" ON)
 option(VKSTEREO_BUILD_SAMPLES "Build the benchmark sample" ON)
+option(VKSTEREO_WITH_IMGCODECS "Let the benchmark read image files through OpenCV imgcodecs" ON)
 
-find_package(OpenCV REQUIRED COMPONENTS core calib3d imgcodecs imgproc)
+if(VKSTEREO_WITH_IMGCODECS)
+  find_package(OpenCV REQUIRED COMPONENTS core calib3d imgproc imgcodecs)
+else()
+  find_package(OpenCV REQUIRED COMPONENTS core calib3d imgproc)
+endif()
 find_package(Vulkan REQUIRED)
 find_program(GLSLANG_VALIDATOR glslangValidator REQUIRED)
 

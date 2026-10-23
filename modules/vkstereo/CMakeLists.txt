@@ -33,19 +33,22 @@ foreach(disparities 64 128)
   endforeach()
 endforeach()
 
-add_library(opencv_vkstereo SHARED src/vkstereo.cpp ${VKSTEREO_SHADER_HEADERS})
+add_library(opencv_vkstereo src/vkstereo.cpp ${VKSTEREO_SHADER_HEADERS})
 target_include_directories(opencv_vkstereo
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>
   PRIVATE ${VKSTEREO_GENERATED})
 target_link_libraries(opencv_vkstereo PUBLIC ${OpenCV_LIBS} PRIVATE Vulkan::Vulkan)
 target_compile_options(opencv_vkstereo PRIVATE -Wall -Wextra)
 
-install(TARGETS opencv_vkstereo LIBRARY DESTINATION lib)
+install(TARGETS opencv_vkstereo LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include)
 
 if(VKSTEREO_BUILD_SAMPLES)
   add_executable(vkstereo_bench samples/vkstereo_bench.cpp)
   target_link_libraries(vkstereo_bench opencv_vkstereo)
+  if(VKSTEREO_WITH_IMGCODECS)
+    target_compile_definitions(vkstereo_bench PRIVATE VKSTEREO_HAVE_IMGCODECS=1)
+  endif()
 endif()
 
 if(VKSTEREO_BUILD_TESTS)
