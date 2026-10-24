@@ -30,6 +30,18 @@ ninja -C build
 ./build/modules/vkstereo/test_vkstereo
 ```
 
+The module also builds inside OpenCV as an extra module, which adds the
+Python bindings (`cv2.vkstereo`):
+
+```sh
+cmake -S opencv -B build -DOPENCV_EXTRA_MODULES_PATH=/path/to/opencv_vkstereo/modules
+```
+
+```python
+matcher = cv2.vkstereo.StereoSGM.create(64, 8, 64, 0.95)
+disparity = matcher.compute(left_gray, right_gray)
+```
+
 Shaders are compiled at build time into the library; image size and penalties
 are specialization constants, so no shader compiler is needed at run time. The
 device is the first discrete GPU; `VKSTEREO_DEVICE=<index>` selects another
